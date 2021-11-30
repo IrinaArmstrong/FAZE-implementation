@@ -1,0 +1,6 @@
+{
+    "__comments__": "focal_length - focal length of normalized camera, distance - normalized distance between eye and camera, size - a size of cropped eye image",
+    "focal_length": 1300,
+    "distance": 600,
+    "size": [256, 64]
+}
