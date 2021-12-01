@@ -6,6 +6,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import logging_handler
+logger = logging_handler.get_logger(__name__)
+
 from .densenet import (
     DenseNetInitialLayers,
     DenseNetBlock,
