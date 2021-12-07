@@ -323,7 +323,7 @@ if __name__ == "__main__":
     batch_size = 20
 
     # Paths
-    dataset_direction = Path("E:/DATA/Eye Data/GazeCapture/GazeCapture1")
+    dataset_direction = Path("E:/DATA/Eye Data/GazeCapture/GazeCapture2")
     meta_filename = Path(__file__).parent.parent.parent / "FAZE Few Shot Gaze" / "faze_preprocess" / "GazeCapture_supplementary.h5"
     output_folder = Path("E:/DATA/Eye Data/GazeCapture/GazeCapture_processed")
 
