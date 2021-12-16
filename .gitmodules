@@ -1,3 +1,0 @@
-[submodule "extentions/HRNet-Facial-Landmark-Detection"]
-	path = extentions/HRNet-Facial-Landmark-Detection
-	url = https://github.com/HRNet/HRNet-Facial-Landmark-Detection.git
