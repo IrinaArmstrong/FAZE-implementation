@@ -323,7 +323,7 @@ if __name__ == "__main__":
     batch_size = 20
 
     # Paths
-    dataset_direction = Path("E:/DATA/Eye Data/GazeCapture/GazeCapture2")
+    dataset_direction = Path("E:/DATA/Eye Data/GazeCapture/GazeCapture3")
     meta_filename = Path(__file__).parent.parent.parent / "FAZE Few Shot Gaze" / "faze_preprocess" / "GazeCapture_supplementary.h5"
     output_folder = Path("E:/DATA/Eye Data/GazeCapture/GazeCapture_processed")
 
@@ -355,7 +355,7 @@ if __name__ == "__main__":
         logger.info(f"Found {len(sessions)} unzipped sessions")
         try:
             normalizer.normalize_dataset(sess_names=sessions,
-                                         output_fn=(output_folder / "train_gaze_capture_processed.h5"))
+                                         output_fn=(output_folder / "test_gaze_capture_processed.h5"))
         except Exception as ex:
             logger.error(f"Exception occurred during normalization on batch #{batch_i}, skipping...")
         finally:

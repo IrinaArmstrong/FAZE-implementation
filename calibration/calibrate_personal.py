@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Union
 
 from monitor import Monitor
-from io_utils import VideoRecorder
+from io_utils import VideoRecorder, VideoWriter
 
 import logging_handler
 logger = logging_handler.get_logger(__name__)
@@ -17,13 +17,18 @@ logger = logging_handler.get_logger(__name__)
 
 class PersonCalibrator:
 
-    def __init__(self, make_grid: bool = False, grid_size: int = 16):
+    def __init__(self, make_grid: bool = False, grid_size: int = 16, **kwargs):
         """
         Data collection & organization for final Person-specific Adaptation of Gaze Network.
         """
         self._root_dir = Path(__file__).resolve().parent.parent
         self._monitor = Monitor()
         self._video_recorder = VideoRecorder()
+        self._video_writer = VideoWriter(output_dir=kwargs.get('output_dir',
+                                                               self._root_dir / "outputs"),
+                                         fps=kwargs.get('fps', 30.0),
+                                         fourcc=kwargs.get('fourcc', "XVID"),
+                                         frame_size=kwargs.get('frame_size', (640, 480)))
         self._monitor_w = self._monitor.get_width_pixels()
         self._monitor_h = self._monitor.get_height_pixels()
 
@@ -128,17 +133,25 @@ class PersonCalibrator:
         return image, g_target, (x, y)
 
     def save_calibration_data(self, calibration_data: Dict[str, List[Any]],
+                              subject_id: str = None,
                               save_fn: Union[str, Path] = None):
         """
         Save data collected during calibration procedure for future use.
         """
         if save_fn is None:
-            save_fn = f'person_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}_calibration_data.pkl'
+            if subject_id is None:
+                subject_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            save_fn = f'person_{subject_id}_calibration_data.pkl'
         save_fn = self._root_dir / "outputs" / save_fn
         logger.info(f"Saving calibration data to: {str(save_fn)}")
         with open(str(save_fn), 'wb') as f:
             pickle.dump(calibration_data, f)
         logger.info(f"Successfully saved to: {str(save_fn)}")
+        # Save video and targets
+        logger.info(f"Saving video...")
+        self._video_writer.save_calibration_data(subject_id,
+                                                 frames=calibration_data['frames'],
+                                                 targets=calibration_data['g_targets_3D_mm'])
 
 
 if __name__ == "__main__":

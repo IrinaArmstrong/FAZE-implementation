@@ -86,7 +86,7 @@ class VideoWriter:
     """
 
     def __init__(self, output_dir: Union[str, Path],
-                 fps: float, fourcc: str, frame_size: Tuple[int, int] = (640, 480)):
+                 fps: float, fourcc: str, frame_size: Tuple = (640, 480)):
         """
         :type output_dir: direction name (absolute) to save videos;
         :param fps: frame-per-second of the created video stream;
@@ -118,9 +118,11 @@ class VideoWriter:
         logger.info(f"Data contains {len(frames)} calibration points.")
         for point_i, (point_frames, target) in enumerate(zip(frames, targets)):
             logger.info(f"Calibration point #{point_i} contains {len(point_frames)} frames.")
-            for frame_i , frame in enumerate(point_frames):
+            for frame_i, frame in enumerate(point_frames):
                 # Write frame
                 video_writer.write(frame)
+                # each frame has target
+                save_targets.append(target)
                 # Show for debugging
                 cv2.putText(frame, f"P#{point_i}F#{frame_i}", (20,20),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (200,0,0), 3, cv2.LINE_AA)
@@ -131,6 +133,21 @@ class VideoWriter:
         video_writer.release()
         logger.info(f"Saving calibration target to: {str(target_fn)}")
         with open(str(self._output_dir / target_fn), 'wb') as f:
-            pickle.dump(target, f)
+            pickle.dump(save_targets, f)
 
 
+if __name__ == "__main__":
+    root_path = Path(__file__).resolve().parent.parent
+    output_dir = root_path / "outputs"
+    writer = VideoWriter(output_dir=output_dir,
+                         fps=30.0,
+                         fourcc="XVID",
+                         frame_size=(640, 480))
+
+    with open(str(output_dir / "person_2021-12-12_20-04-04_calibration_data.pkl"), 'rb') as f:
+        data = pickle.load(f)
+    logger.info(f"File opened, has {len(data['frames'])} calibration points")
+    # write
+    writer.save_calibration_data(subject_id="2021-12-12_20-04-04",
+                                 frames=data['frames'],
+                                 targets=data['g_targets_3D_mm'])
