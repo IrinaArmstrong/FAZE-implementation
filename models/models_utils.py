@@ -10,6 +10,35 @@ from sklearn.metrics import (balanced_accuracy_score, accuracy_score,
 import torch
 import torch.nn as nn
 
+import logging_handler
+logger = logging_handler.get_logger(__name__)
+
+def check_cuda_available():
+    if torch.cuda.is_available():
+        logger.info(f"CUDA device is available.")
+        return True
+    logger.info(f"CUDA device is not available. Change to CPU.")
+    return False
+
+
+def acquire_device(device_type: str = 'cpu'):
+    """
+    Check available devices and select one.
+    """
+    device = torch.device(device_type)
+    logger.info(f"Preferred device: {device.type}")
+
+    if device.type == 'gpu':
+        if not check_cuda_available():
+            logger.error(f"Device provided is CUDA, but it is available. Change to CPU.")
+            device = torch.device('cpu')
+        else:
+            logger.info(torch.cuda.get_device_name(0))
+            logger.info('Memory Usage, Allocated:', round(torch.cuda.memory_allocated(0) / 1024 ** 3, 1), 'GB')
+            logger.info('Memory Usage, Cached:', round(torch.cuda.memory_reserved(0) / 1024 ** 3, 1), 'GB')
+
+
+
 def seed_everything(seed_value: int):
     random.seed(seed_value)  # Python
     np.random.seed(seed_value)  # cpu vars
@@ -21,7 +50,6 @@ def seed_everything(seed_value: int):
         torch.cuda.manual_seed_all(seed_value)  # gpu vars
         torch.backends.cudnn.deterministic = True  # get rid of nondeterminism
         torch.backends.cudnn.benchmark = True
-
 
 
 def copy_data_to_device(data, device):
