@@ -6,6 +6,9 @@ from PIL import Image
 from pathlib import Path
 from typing import List
 
+import warnings
+warnings.simplefilter('ignore')
+
 import logging_handler
 logger = logging_handler.get_logger(__name__)
 
@@ -31,14 +34,14 @@ class FaceDetector:
         :param scale: frame resize factor;
         :param policy: which face to select - by size or by maximal confidence score?
                        so `size` or `score` respectively.
-        :return: ???
+        :return: face bounding box as array with top left and bottom right corners coordinates (x, y).
         """
         # detect face
         frame_resized = cv2.resize(frame, (0, 0), fx=scale, fy=scale)
         frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
         pil_frame = Image.fromarray(frame_rgb)
 
-        # BBoxes as 5 numbers: left top (x and y), height, width and score from final ONet.
+        # BBoxes as 5 numbers: left top (x and y), ?height, ?width and score from final ONet.
         # LMKs as 10 numbers (x, y): left eye, right eye, nose, left mouth corner, right mouth corner.
         bounding_boxes, landmarks = detect_faces(pil_frame, min_face_size=30.0)
         if not len(bounding_boxes):
@@ -62,7 +65,7 @@ class FaceDetector:
                       policy: str) -> np.ndarray:
         """
         Select single face location based on provided policy of selection.
-        :param bounding_boxes: bounding boxes as 4 numbers: left top (x and y), height, width,
+        :param bounding_boxes: bounding boxes as 4 numbers: left top (x and y), ?(height, width),
         :param scores: probability scores of face location, produced by ONet of MTCNN model,
         :param policy: which face to select - by size or by maximal confidence score?
                        so `size` or `score` respectively.
@@ -91,3 +94,16 @@ class FaceDetector:
                 face_location = bounding_boxes[best_id]
             return face_location
 
+
+if __name__ == "__main__":
+    test_img_dir = Path(__file__).resolve().parent.parent/ "additional" / "test_samples"
+    # 'elon_musk.jpg' 'empty.jpg'
+    image = Image.open(str(test_img_dir / 'elon_musk.jpg'))
+    image = image.resize((640, 480), Image.ANTIALIAS)
+
+    detector = FaceDetector()
+    face_location = detector.detect(np.array(image))
+    logger.info(f"Face location of shape {len(face_location)}: {face_location}")
+    # Show
+    draw_image = show_bboxes(image, np.asarray(face_location).reshape(1, -1))
+    draw_image.show()

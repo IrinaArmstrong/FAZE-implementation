@@ -1,12 +1,13 @@
 # Basic
 import os
 import sys
+import shutil
 import random
+import numpy as np
 from pathlib import Path
-from typing import (List, NoReturn, Tuple, Union, Dict, Any)
+from typing import (List, Union, Dict, Any)
 from sklearn.metrics import (balanced_accuracy_score, accuracy_score,
-                             classification_report, f1_score,
-                             recall_score, precision_score)
+                             classification_report)
 import torch
 import torch.nn as nn
 
@@ -28,7 +29,7 @@ def acquire_device(device_type: str = 'cpu'):
     device = torch.device(device_type)
     logger.info(f"Preferred device: {device.type}")
 
-    if device.type == 'gpu':
+    if device.type == 'cuda':
         if not check_cuda_available():
             logger.error(f"Device provided is CUDA, but it is available. Change to CPU.")
             device = torch.device('cpu')
@@ -36,7 +37,7 @@ def acquire_device(device_type: str = 'cpu'):
             logger.info(torch.cuda.get_device_name(0))
             logger.info('Memory Usage, Allocated:', round(torch.cuda.memory_allocated(0) / 1024 ** 3, 1), 'GB')
             logger.info('Memory Usage, Cached:', round(torch.cuda.memory_reserved(0) / 1024 ** 3, 1), 'GB')
-
+    return device
 
 
 def seed_everything(seed_value: int):
