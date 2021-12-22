@@ -1,16 +1,14 @@
 # Basic
 import sys
 import cv2
-import time
-import pickle
-import datetime
 import numpy as np
 from pathlib import Path
+from PIL import Image
+from collections import OrderedDict
 from typing import Dict, Any, List, Union
 
 # Torch
 import torch
-import torch.nn as nn
 import torch.backends.cudnn as cudnn
 
 import logging_handler
@@ -23,7 +21,7 @@ from lib.datasets import get_dataset
 from lib.core import evaluation
 from lib.utils import transforms
 
-from face_detection import FaceDetector
+from face_detection import FaceDetector, show_bboxes
 from models.models_utils import check_cuda_available, acquire_device
 
 
@@ -88,7 +86,7 @@ class LandmarksDetector:
             logger.error(f"Error occurred during HRNet model initialization: {ex}")
             raise ex
 
-    def detect(self, frame: np.ndarray, **kwargs):
+    def detect(self, frame: np.ndarray, **kwargs) -> np.ndarray:
         """
 
         :param frame:
@@ -135,15 +133,117 @@ class LandmarksDetector:
         score_map = output.data.cpu()
         center = np.expand_dims(np.array(center, dtype=np.float32), axis=0)
         scale = np.expand_dims(np.array(scale, dtype=np.float32), axis=0)
-        #
-        preds = evaluation.decode_preds(score_map, center, scale, res=[64, 64])
-        preds = np.squeeze(preds.numpy(), axis=0)
+        # Decoding lmks probabilities
+        predicted_lmks = evaluation.decode_preds(score_map, center, scale, res=[64, 64])
+        predicted_lmks = np.squeeze(predicted_lmks.numpy(), axis=0)
 
-        # get the 68 300 VW points:
-        # idx_300vw = self.map_to_300vw()
-        # preds = preds[idx_300vw, :]
+        # convert 96 WFLW lmks to 68 from 300VW dataset lmks
+        idx_300vw = self.__map_landmarks_to_300vw()
+        predicted_lmks_300vw = predicted_lmks[idx_300vw, :]
 
-        return preds
+        if kwargs.get('return_face_location', False):
+            return predicted_lmks_300vw, face_location
+
+        return predicted_lmks_300vw
+
+    def __map_landmarks_to_300vw(self) -> List[int]:
+        """
+        Function for converting 96 WFLW dataset landmarks ids
+        to 68 from 300VW dataset landmarks ids.
+        (see schemes in `additional` folder)
+        :return: list of indexes for corresponding points selection from output of model
+                that predicted WFLW dataset landmarks.
+        """
+        lmks_68_to_96_mapping = OrderedDict()
+        lmks_68_to_96_mapping.update(dict(zip(range(0, 17), range(0, 34, 2))))  # jaw | 17 pts
+        lmks_68_to_96_mapping.update(
+            dict(zip(range(17, 22), range(33, 38))))  # left upper eyebrow points | 5 pts
+        lmks_68_to_96_mapping.update(
+            dict(zip(range(22, 27), range(42, 47))))  # right upper eyebrow points | 5 pts
+        lmks_68_to_96_mapping.update(dict(zip(range(27, 36), range(51, 60))))  # nose points | 9 pts
+        lmks_68_to_96_mapping.update({36: 60})  # left eye points | 6 pts
+        lmks_68_to_96_mapping.update({37: 61})
+        lmks_68_to_96_mapping.update({38: 63})
+        lmks_68_to_96_mapping.update({39: 64})
+        lmks_68_to_96_mapping.update({40: 65})
+        lmks_68_to_96_mapping.update({41: 67})
+        lmks_68_to_96_mapping.update({42: 68})  # right eye | 6 pts
+        lmks_68_to_96_mapping.update({43: 69})
+        lmks_68_to_96_mapping.update({44: 71})
+        lmks_68_to_96_mapping.update({45: 72})
+        lmks_68_to_96_mapping.update({46: 73})
+        lmks_68_to_96_mapping.update({47: 75})
+        lmks_68_to_96_mapping.update(dict(zip(range(48, 68), range(76, 96))))  # mouth points | 20 pts
+        lmks_96_to_68_mapping = {k: v for k, v in lmks_68_to_96_mapping.items()}
+
+        return list(lmks_96_to_68_mapping.values())
+
+    def plot_markers(self, image: np.ndarray,
+                     face_location: np.ndarray,
+                     facial_landmarks: np.ndarray,
+                     color: Union[List[int], str] = (0, 0, 255),
+                     radius: int = 3, drawline: bool = False):
+        """
+        Plot detected landmark points on frame.
+        """
+        # show face location bounding box
+        image = cv2.rectangle(image,
+                              (int(face_location[0]), int(face_location[1])),
+                              (int(face_location[2]), int(face_location[3])),
+                              (255, 0, 0), 2)
+
+        # plot only 68 points, others (if any???) skipping
+        for idx, p in enumerate(facial_landmarks):
+            if idx > 68:
+                logger.warning(f"Number of given landmark more than 68!")
+                continue
+            image = cv2.circle(image, center=(int(p[0]), int(p[1])),
+                               radius=radius, color=color, thickness=-1)
+            cv2.putText(image, text=f"#{idx}", org=(int(p[0]), int(p[1])),
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=0.3, color=(255, 0, 0), thickness=1,
+                        lineType=cv2.LINE_AA)
+
+        if drawline:
+            # 0-16
+            image = cv2.polylines(image, facial_landmarks[0:17].astype('int32').reshape(-1, 1, 2),
+                                  isClosed=False, color=color, thickness=1)
+            # 17-21
+            image = cv2.polylines(image, facial_landmarks[17:22].astype('int32').reshape(-1, 1, 2),
+                                  isClosed=False, color=color, thickness=1)
+            # 22-26
+            image = cv2.polylines(image, facial_landmarks[22:27].astype('int32').reshape(-1, 1, 2),
+                                  isClosed=False, color=color, thickness=1)
+            # 27-35
+            image = cv2.polylines(image, facial_landmarks[27:36].astype('int32').reshape(-1, 1, 2),
+                                  isClosed=False, color=color, thickness=1)
+            # 36-41
+            image = cv2.polylines(image, facial_landmarks[36:41].astype('int32').reshape(-1, 1, 2),
+                                  isClosed=False, color=color, thickness=1)
+            # 42-47
+            image = cv2.polylines(image, facial_landmarks[42:48].astype('int32').reshape(-1, 1, 2),
+                                  isClosed=False, color=color, thickness=1)
+            # 48-67
+            image = cv2.polylines(image, facial_landmarks[48:68].astype('int32').reshape(-1, 1, 2),
+                                  isClosed=False, color=color, thickness=1)
+
+        return image
 
 
+if __name__ == "__main__":
+    test_img_dir = Path(__file__).resolve().parent.parent/ "additional" / "test_samples"
+    # 'elon_musk.jpg' 'empty.jpg'
+    image = Image.open(str(test_img_dir / 'test_image.png'))
+    image = image.resize((640, 480), Image.ANTIALIAS)
+
+    # detect facial points
+    lmk_detector = LandmarksDetector()
+    lmks, face_location = lmk_detector.detect(np.array(image), return_face_location=True)
+
+    # Show
+    draw_image = lmk_detector.plot_markers(np.array(image),
+                                           np.asarray(face_location),
+                                           lmks, drawline=True)
+    cv2.imshow('Landmarks detected', draw_image)
+    cv2.waitKey(0)
 
