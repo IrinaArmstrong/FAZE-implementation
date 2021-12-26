@@ -46,7 +46,7 @@ class FaceDetector:
         bounding_boxes, landmarks = detect_faces(pil_frame, min_face_size=30.0)
         if not len(bounding_boxes):
             logger.error(f"No face detected! Return full frame.")
-            return np.asarray([0, 0, frame.shape[0], frame.shape[1]])
+            return np.asarray([0, 0, frame.shape[1], frame.shape[0]])
 
         scores = [x[4] for x in bounding_boxes]
         bounding_boxes = [x[:4] for x in bounding_boxes]
@@ -54,7 +54,7 @@ class FaceDetector:
 
         if not len(face_location):
             logger.error(f"No face detected! Return full frame.")
-            return np.asarray([0, 0, frame.shape[0], frame.shape[1]])
+            return np.asarray([0, 0, frame.shape[1], frame.shape[0]])
         # rescale back to initial sizes
         face_location = face_location * (1 / scale)
         logger.info(f"Face successfully detected.")
@@ -92,13 +92,13 @@ class FaceDetector:
                     face_location = bounding_boxes[best_id]
             else:
                 face_location = bounding_boxes[best_id]
-            return face_location
+        return face_location
 
 
 if __name__ == "__main__":
     test_img_dir = Path(__file__).resolve().parent.parent/ "additional" / "test_samples"
     # 'elon_musk.jpg' 'empty.jpg'
-    image = Image.open(str(test_img_dir / 'elon_musk.jpg'))
+    image = Image.open(str(test_img_dir / 'empty.jpg'))
     image = image.resize((640, 480), Image.ANTIALIAS)
 
     detector = FaceDetector()

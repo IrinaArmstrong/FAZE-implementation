@@ -23,6 +23,7 @@ from lib.utils import transforms
 
 from face_detection import FaceDetector, show_bboxes
 from models.models_utils import check_cuda_available, acquire_device
+from preprocessing.kalman_filters import KalmanFilter1D
 
 
 class LandmarksDetector:
@@ -69,8 +70,11 @@ class LandmarksDetector:
         else:
             cudnn.enabled = False
 
-        # Init MTCNN model for face bounding box detection
+        # Initialize MTCNN model for face bounding box detection
         self.__face_detector = FaceDetector()
+        # Initialize 1D Kalman filters for different coordinates
+        # will be used for face detection over a single object
+        self.__face_loc_filters = [KalmanFilter1D(dim_x=10, R_=1e-4) for _ in range(2)]
 
         # Init HRNet for facial landmarks detection
         lmk_model_fn = self._lib_dir / 'hrnetv2_pretrained' / 'HR18-WFLW.pth'
@@ -86,6 +90,13 @@ class LandmarksDetector:
             logger.error(f"Error occurred during HRNet model initialization: {ex}")
             raise ex
 
+        # Initialize 68 1D Kalman filters for different coordinates
+        # will be used to smooth landmarks over the face for a single face tracking
+        self.__lmks_filters = [KalmanFilter1D(dim_x=10, R_=2.5e-05) for _ in range(68)]
+
+        # Initialize 1D Kalman filter for the on-screen gaze point-of regard
+        self.__gaze_filter = KalmanFilter1D(dim_x=10, R_=1e-4)
+
     def detect(self, frame: np.ndarray, **kwargs) -> np.ndarray:
         """
 
@@ -96,7 +107,15 @@ class LandmarksDetector:
         # as two points with (x, y) coords
         face_location = self.__face_detector.detect(frame=frame, scale=kwargs.get('scale', 1.0),
                                                     policy=kwargs.get('policy', 'size'))
-        # todo: here filter face location with Kalman filter
+
+        # Use two 1D Kalman filters to smooth bounding box position coordinates
+        # (upper left corner and lower right corner)
+        # Assuming them as two complex numbers: a = x0 +j*y0 and b = x1 +j*y1
+        output_tracked = self.__face_loc_filters[0].update(face_location[0] + 1j * face_location[1])
+        face_location[0], face_location[1] = np.real(output_tracked), np.imag(output_tracked)
+        output_tracked = self.__face_loc_filters[1].update(face_location[2] + 1j * face_location[3])
+        face_location[2], face_location[3] = np.real(output_tracked), np.imag(output_tracked)
+
         # unpack location
         x_min = face_location[0]
         y_min = face_location[1]
@@ -140,6 +159,12 @@ class LandmarksDetector:
         # convert 96 WFLW lmks to 68 from 300VW dataset lmks
         idx_300vw = self.__map_landmarks_to_300vw()
         predicted_lmks_300vw = predicted_lmks[idx_300vw, :]
+
+        # Using 68 1D Kalman filter on landmarks to smooth their movements
+        for i in range(68):
+            lmk_f = self.__lmks_filters[i].update(predicted_lmks_300vw[i, 0] + 1j * predicted_lmks_300vw[i, 1])
+            predicted_lmks_300vw[i, 0], = np.real(lmk_f)
+            predicted_lmks_300vw[i, 1] = np.imag(lmk_f)
 
         if kwargs.get('return_face_location', False):
             return predicted_lmks_300vw, face_location
