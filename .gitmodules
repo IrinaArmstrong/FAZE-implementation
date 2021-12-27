@@ -1,0 +1,6 @@
+[submodule "extensions/mtcnn-pytorch"]
+	path = extensions/mtcnn-pytorch
+	url = git@github.com:IrinaArmstrong/mtcnn-pytorch.git
+[submodule "extensions/HRNet-Facial-Landmark-Detection"]
+	path = extensions/HRNet-Facial-Landmark-Detection
+	url = git@github.com:IrinaArmstrong/HRNet-Facial-Landmark-Detection.git
