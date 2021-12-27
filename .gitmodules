@@ -1,6 +1,3 @@
-[submodule "extensions/HRNet-Facial-Landmark-Detection"]
-	path = extensions/HRNet-Facial-Landmark-Detection
-	url = https://github.com/HRNet/HRNet-Facial-Landmark-Detection.git
 [submodule "extensions/mtcnn-pytorch"]
 	path = extensions/mtcnn-pytorch
 	url = git@github.com:TropComplique/mtcnn-pytorch.git
