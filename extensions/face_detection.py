@@ -98,7 +98,7 @@ class FaceDetector:
 if __name__ == "__main__":
     test_img_dir = Path(__file__).resolve().parent.parent/ "additional" / "test_samples"
     # 'elon_musk.jpg' 'empty.jpg'
-    image = Image.open(str(test_img_dir / 'empty.jpg'))
+    image = Image.open(str(test_img_dir / 'elon_musk.jpg'))
     image = image.resize((640, 480), Image.ANTIALIAS)
 
     detector = FaceDetector()
