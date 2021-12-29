@@ -163,7 +163,7 @@ class LandmarksDetector:
         # Using 68 1D Kalman filter on landmarks to smooth their movements
         for i in range(68):
             lmk_f = self.__lmks_filters[i].update(predicted_lmks_300vw[i, 0] + 1j * predicted_lmks_300vw[i, 1])
-            predicted_lmks_300vw[i, 0], = np.real(lmk_f)
+            predicted_lmks_300vw[i, 0] = np.real(lmk_f)
             predicted_lmks_300vw[i, 1] = np.imag(lmk_f)
 
         if kwargs.get('return_face_location', False):
