@@ -26,6 +26,17 @@ from models.models_utils import check_cuda_available, acquire_device
 from preprocessing.kalman_filters import KalmanFilter1D
 
 
+# Mapping based on additional/300W_lmks_annotation.png
+# Assuming: left ---> right (on image/photo!)
+hr_landmarks2ids_mapping = {
+    "nose bridge": [27, 28, 29, 30],
+    "nose base": [31, 33, 35],
+    "left-eye corners": [36, 39],  # the most left eye on image
+    "right-eye corners": [42, 45],  # the most right eye on image
+    "mouth corners": [48, 54]
+}
+
+
 class LandmarksDetector:
 
     def __init__(self, addit_config_fn: str = None,
@@ -207,7 +218,7 @@ class LandmarksDetector:
                      face_location: np.ndarray,
                      facial_landmarks: np.ndarray,
                      color: Union[List[int], str] = (0, 0, 255),
-                     radius: int = 3, drawline: bool = False):
+                     radius: int = 2, drawline: bool = False):
         """
         Plot detected landmark points on frame.
         """
@@ -222,11 +233,19 @@ class LandmarksDetector:
             if idx > 68:
                 logger.warning(f"Number of given landmark more than 68!")
                 continue
+
+            if idx in hr_landmarks2ids_mapping['left-eye corners']:
+                color = (0, 255, 0)  # green
+            elif idx in hr_landmarks2ids_mapping['right-eye corners']:
+                color = (255, 0, 0)  # blue
+            else:
+                color = (0, 0, 255)  # red
+
             image = cv2.circle(image, center=(int(p[0]), int(p[1])),
                                radius=radius, color=color, thickness=-1)
-            cv2.putText(image, text=f"#{idx}", org=(int(p[0]), int(p[1])),
+            cv2.putText(image, text=f"{idx}", org=(int(p[0]), int(p[1])),
                         fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                        fontScale=0.3, color=(255, 0, 0), thickness=1,
+                        fontScale=0.2, color=(0, 0, 0), thickness=1,
                         lineType=cv2.LINE_AA)
 
         if drawline:
@@ -256,7 +275,8 @@ class LandmarksDetector:
 
 
 if __name__ == "__main__":
-    test_img_dir = Path(__file__).resolve().parent.parent/ "additional" / "test_samples"
+    output_dir = Path(__file__).resolve().parent.parent / "outputs"
+    test_img_dir = Path(__file__).resolve().parent.parent / "additional" / "test_samples"
     # 'elon_musk.jpg' 'empty.jpg'
     image = Image.open(str(test_img_dir / 'test_image.png'))
     image = image.resize((640, 480), Image.ANTIALIAS)
@@ -268,7 +288,10 @@ if __name__ == "__main__":
     # Show
     draw_image = lmk_detector.plot_markers(np.array(image),
                                            np.asarray(face_location),
-                                           lmks, drawline=True)
+                                           lmks, drawline=False)
+    draw_image = cv2.resize(draw_image, (960, 720))
     cv2.imshow('Landmarks detected', draw_image)
     cv2.waitKey(0)
+    # Save
+    cv2.imwrite(str(output_dir / "lmks_detected.png"), draw_image)
 
