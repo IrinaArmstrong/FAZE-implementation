@@ -25,7 +25,6 @@ from face_detection import FaceDetector, show_bboxes
 from models.models_utils import check_cuda_available, acquire_device
 from preprocessing.kalman_filters import KalmanFilter1D
 
-
 # Mapping based on additional/300W_lmks_annotation.png
 # Assuming: left ---> right (on image/photo!)
 hr_landmarks2ids_mapping = {

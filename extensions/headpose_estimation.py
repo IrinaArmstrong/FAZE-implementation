@@ -43,7 +43,7 @@ class HeadPoseEstimator:
                                                         min_detection_confidence=0.5,
                                                         min_tracking_confidence=0.5)
 
-    def __estimate_3d_landmarks(self, frame: np.ndarray, visualize: bool = False):
+    def estimate_3d_landmarks(self, frame: np.ndarray, visualize: bool = False):
         """
         Performs the 3D landmarks detection. Requires a pass of the image (in RGB format),
         then runs detection  pipeline and gets a list of 468 facial landmarks for each detected face in the image.
@@ -73,7 +73,7 @@ class HeadPoseEstimator:
         if face_mesh_results.multi_face_landmarks:
             # Get first found face landmarks
             all_landmarks = face_mesh_results.multi_face_landmarks[0].landmark
-            for lmks_key, lmks_ids in mp_landmarks2ids_mapping.keys():
+            for lmks_key, lmks_ids in mp_landmarks2ids_mapping.items():
                 landmarks_res[lmks_key] = [(all_landmarks[i].x * frame_w,
                                             all_landmarks[i].y * frame_h,
                                             all_landmarks[i].z * frame_w)
@@ -97,7 +97,7 @@ class HeadPoseEstimator:
         drawing_spec = mp_drawing.DrawingSpec(thickness=-1, circle_radius=2)
         contours_style = mp.solutions.drawing_styles.get_default_face_mesh_contours_style()
 
-        for lmks_key, lmks_ids in mp_landmarks2ids_mapping.keys():
+        for lmks_key, lmks_ids in mp_landmarks2ids_mapping.items():
             # NormalizedLandmarkList format
             lmks = landmark_pb2.NormalizedLandmarkList(landmark=[landmarks[i] for i in lmks_ids])
             mp.solutions.drawing_utils.draw_landmarks(image=frame_copy,
@@ -110,4 +110,22 @@ class HeadPoseEstimator:
         plt.axis('off')
         plt.imshow(frame_copy)
         plt.show()
+
+
+if __name__ == "__main__":
+    from calibration.io_utils import VideoReader
+
+    output_dir = Path(__file__).resolve().parent.parent / "outputs"
+    reader = VideoReader()
+    frames = reader.read(output_dir / "2021-12-12_20-04-04_calibration.avi")
+    print(f"Video-file read: {len(frames)} frames")
+
+    headpose_estimator = HeadPoseEstimator()
+    frames_landmarks = []
+    for frame_i, frame in enumerate(frames):
+        frame_lmks = headpose_estimator.estimate_3d_landmarks(frame, visualize=False)
+        frames_landmarks.append(frame_lmks)
+        if frame_i > 1:
+            break
+
 
