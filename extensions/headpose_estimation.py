@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List, Union, Tuple
 
 # Landmarks detection
 import mediapipe as mp
@@ -43,7 +43,72 @@ class HeadPoseEstimator:
                                                         min_detection_confidence=0.5,
                                                         min_tracking_confidence=0.5)
 
-    def estimate_3d_landmarks(self, frame: np.ndarray, visualize: bool = False):
+    def estimate_headpose(self, frame: np.ndarray, landmarks_2d: np.ndarray,
+                          camera_matrix: np.ndarray, distortion_coeffs: np.ndarray,
+                          visualize: bool = False) -> List[np.ndarray]:
+        """
+        Calculate the rotational (R) and the translational (T) matrix of head pose
+        by solving standart Perspective-n-Point (PnP) equation.
+        For this requires three components, such as:
+            - The 2D coordinates in the image space (take as input argument);
+            - The 3D coordinates in the world space (calculate inside);
+            - The camera parameters, such as the focal points,
+            the center coordinate, and the skew parameter (take as input argument);
+        :return - the translational vector (Tvec) and the rotational vector (Rvec).
+        for more info see: https://towardsdatascience.com/head-pose-estimation-using-python-d165d3541600
+        """
+        if camera_matrix.shape != (3, 3):
+            logger.error(f"Invalid `camera_matrix` shape: {camera_matrix.shape}, required [3 x 3] matrix.")
+            return [None, None]
+
+        if landmarks_2d.shape != (68, 2):
+            logger.error(f"Invalid `landmarks_2d` shape: {landmarks_2d.shape}, required [68 x 2] matrix.")
+            return [None, None]
+
+        # Select 'anchor' landmarks for PnP problem solution
+        anchor_landmarks_2d = dict.fromkeys(hr_landmarks2ids_mapping.keys())
+        for lmks_key, lmks_ids in hr_landmarks2ids_mapping.items():
+            anchor_landmarks_2d[lmks_key] = landmarks_2d[lmks_ids, :]
+        # As Nx2 1-channel array, where N is the number of points.
+        anchor_landmarks_2d = np.vstack(list(anchor_landmarks_2d.values()))
+
+        # Estimate 3d landmarks
+        anchor_landmarks_3d = self.estimate_3d_landmarks(frame, visualize=visualize)
+        # As Nx3 1-channel array, where N is the number of points.
+        anchor_landmarks_3d = np.vstack(list(anchor_landmarks_3d.values()))
+
+        # Initial fit, use of RANSAC makes the solution resistant to outliers
+        # cv.solvePnPRansac(objectPoints, imagePoints, cameraMatrix, distCoeffs
+        # [, rvec[, tvec[, useExtrinsicGuess[, iterationsCount[, reprojectionError
+        # [, confidence[, inliers[, flags]]]]]]]]	) ->	retval, rvec, tvec, inliers
+        success, rvec, tvec, inliers = cv2.solvePnPRansac(anchor_landmarks_3d, anchor_landmarks_2d,
+                                                          camera_matrix, distortion_coeffs, flags=cv2.SOLVEPNP_EPNP)
+        if success:
+            logger.debug(f"""PnPRansac finished successfully with 
+            {len(inliers)} inliers from {len(anchor_landmarks_3d)} anchor points.""")
+        else:
+            logger.warning(f"PnPRansac finished without success!")
+
+        # Second fit for higher accuracy
+        # cv2.solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs
+        # [, rvec[, tvec[, useExtrinsicGuess[, flags]]]]) → retval, rvec, tvec
+        success, rvec, tvec = cv2.solvePnP(anchor_landmarks_3d, anchor_landmarks_2d,
+                                           camera_matrix, distortion_coeffs,
+                                           rvec=rvec, tvec=tvec, useExtrinsicGuess=True,
+                                           flags=cv2.SOLVEPNP_ITERATIVE)
+        # cv::SOLVEPNP_ITERATIVE Iterative method is based on a Levenberg-Marquardt optimization
+        if success:
+            logger.info(f"""PnP finished successfully with 
+            {len(inliers)} inliers from {len(anchor_landmarks_3d)} anchor points.""")
+        else:
+            logger.warning(f"PnPRansac finished without success!")
+
+        # Get rotational matrix
+        rmat, jac = cv2.Rodrigues(rvec)
+        return rvec, tvec
+
+    def estimate_3d_landmarks(self, frame: np.ndarray, visualize: bool = False) \
+            -> Dict[str, List[Tuple[float]]]:
         """
         Performs the 3D landmarks detection. Requires a pass of the image (in RGB format),
         then runs detection  pipeline and gets a list of 468 facial landmarks for each detected face in the image.
@@ -82,12 +147,13 @@ class HeadPoseEstimator:
             logger.error(f"No facial landmarks found with MediaPipe on frame.")
 
         if visualize:
-            self._visualize_landmarks(frame=frame_rgb, landmarks=all_landmarks)
+            self.visualize_landmarks(frame=frame_rgb, landmarks=all_landmarks)
         return landmarks_res
 
-    def _visualize_landmarks(self, frame: np.ndarray, landmarks: Any,
-                             frame_size: List[int] = (960, 720),
-                             figsize: List[int] = (20, 17)):
+    @staticmethod
+    def visualize_landmarks(frame: np.ndarray, landmarks: Any,
+                            frame_size: List[int] = (960, 720),
+                            figsize: List[int] = (20, 17)):
         # Create a copy of the sample image in RGB format to draw the found facial landmarks on.
         frame_copy = frame.copy()
         frame_copy = cv2.resize(frame_copy, frame_size)
