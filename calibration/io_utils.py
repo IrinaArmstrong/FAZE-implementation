@@ -2,7 +2,7 @@ import cv2
 import pickle
 import numpy as np
 from threading import Thread
-from typing import Union, Tuple, List
+from typing import Union, Tuple, List, Any
 from pathlib import Path
 
 import logging_handler
@@ -135,6 +135,59 @@ class VideoWriter:
         with open(str(self._output_dir / target_fn), 'wb') as f:
             pickle.dump(save_targets, f)
 
+
+class VideoReader:
+    """
+    Class that simply reads frames from a pre-saved VideoCapture object.
+    """
+
+    def __init__(self):
+        self.__frames = []
+
+    def read(self, fn: Union[str, Path]) -> List[Any]:
+        """
+        Reading video of any type by frames.
+        frames - each of shape (height, width, number_of_channels), in BGR
+        """
+        self.__frames = []
+        if type(fn) == str:
+            fn = Path(fn).resolve()
+
+        if not fn.exists():
+            logger.error(f"File: {fn} do not exists!")
+            return self.__frames
+
+        try:
+            logger.info(f"Starts reading file...")
+            cap = cv2.VideoCapture(str(fn))
+
+            # Check if camera opened successfully
+            if not cap.isOpened():
+                logger.error(f"Error opening video stream from file: {fn}")
+                return self.__frames
+
+            # Read until video is completed
+            while cap.isOpened():
+                # Capture frame-by-frame
+                success, frame = cap.read()
+                if success:
+                    self.__frames.append(frame)
+                else:
+                    logger.info(f"File reading finished.")
+                    logger.info(f"Read {len(self.__frames)} frames.")
+                    return self.__frames
+
+        except Exception as ex:
+            print(f"Error opening video stream from file: {fn}, {ex}")
+            return self.__frames
+
+    def get_frames(self) -> List[Any]:
+        """
+        Return previously read frames.
+        :return: frames - each of shape (height, width, number_of_channels)
+        """
+        logger.info(f"Read {len(self.__frames)} frames.")
+        return self.__frames
 
 if __name__ == "__main__":
     root_path = Path(__file__).resolve().parent.parent
