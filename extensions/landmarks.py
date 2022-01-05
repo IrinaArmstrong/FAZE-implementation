@@ -17,7 +17,6 @@ logger = logging_handler.get_logger(__name__)
 sys.path.insert(0, "HRNet-Facial-Landmark-Detection/")
 from lib.config import config
 import lib.models as models
-from lib.datasets import get_dataset
 from lib.core import evaluation
 from lib.utils import transforms
 
@@ -30,9 +29,18 @@ from preprocessing.kalman_filters import KalmanFilter1D
 hr_landmarks2ids_mapping = {
     "nose bridge": [27, 28, 29, 30],
     "nose base": [31, 33, 35],
+    "mouth corners": [48, 54],
     "left-eye corners": [36, 39],  # the most left eye on image
     "right-eye corners": [42, 45],  # the most right eye on image
-    "mouth corners": [48, 54]
+
+}
+# Enumerate from 1 ... 68
+hr_ibug_landmarks2ids_mapping = {
+    "nose bridge": [28, 29, 30, 31],
+    "nose base": [32, 33, 34, 35, 36],
+    "left-eye corners": [37, 40],  # the most left eye on image
+    "right-eye corners": [43, 46]  # the most right eye on image
+
 }
 
 
@@ -109,9 +117,8 @@ class LandmarksDetector:
 
     def detect(self, frame: np.ndarray, **kwargs) -> np.ndarray:
         """
-
-        :param frame:
-        :return:
+        Detect 68 landmarks on given frame.
+        :return: landmarks as 2-dim array with shape [68 x 2] of float coordinates.
         """
         logger.info(f"Landmarks detection got frame with shape: {frame.shape}, starting...")
         # as two points with (x, y) coords
@@ -283,6 +290,10 @@ if __name__ == "__main__":
     # detect facial points
     lmk_detector = LandmarksDetector()
     lmks, face_location = lmk_detector.detect(np.array(image), return_face_location=True)
+
+    # Save
+    np.save(str(output_dir / 'test_image_face_loc.npy'), face_location)
+    np.save(str(output_dir / 'test_image_HRNet_lmks.npy'), lmks)
 
     # Show
     draw_image = lmk_detector.plot_markers(np.array(image),

@@ -4,6 +4,3 @@
 [submodule "extensions/HRNet-Facial-Landmark-Detection"]
 	path = extensions/HRNet-Facial-Landmark-Detection
 	url = git@github.com:IrinaArmstrong/HRNet-Facial-Landmark-Detection.git
-[submodule "extensions/eos"]
-	path = extensions/eos
-	url = git@github.com:patrikhuber/eos.git
