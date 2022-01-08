@@ -22,7 +22,7 @@ class Undistorter:
         self._previous_parameters = None
 
     def __call__(self, image: np.ndarray, camera_matrix: np.ndarray, distortion: np.ndarray,
-                 is_gazecapture=False):
+                 is_gazecapture = True):
         """
         Arguments:
             image - frame as np.ndarray marix of pixels values.

@@ -43,6 +43,7 @@ class MPHeadPoseEstimator:
         self._root_dir = Path(__file__).resolve().parent.parent
         self.__model = mp.solutions.face_mesh
         # Mediapipe’s face landmarks detection model for video stream
+        self.__mp_face_mesh = mp.solutions.face_mesh
         self.__face_mesh = self.__mp_face_mesh.FaceMesh(static_image_mode=False,
                                                         min_detection_confidence=0.5,
                                                         min_tracking_confidence=0.5)
@@ -383,7 +384,7 @@ if __name__ == "__main__":
     # headpose_estimator = MPHeadPoseEstimator()
     # frames_landmarks = []
     # for frame_i, frame in enumerate(frames):
-    #     frame_lmks = headpose_estimator.estimate_3d_landmarks(frame, visualize=False)
+    #     frame_lmks = headpose_estimator.estimate_3d_landmarks(frame, visualize=True)
     #     frames_landmarks.append(frame_lmks)
     #     if frame_i > 1:
     #         break
@@ -392,7 +393,7 @@ if __name__ == "__main__":
     frames_rvecs = []
     frames_tvecs = []
     for frame_i, frame in enumerate(frames):
-        lmks = lmk_detector.detect(frame, return_face_location=False)
+        _, lmks = lmk_detector.detect(frame, return_face_location=False)
         rvec, tvec = headpose_estimator.estimate_headpose(frame, landmarks_2d=lmks,
                                                           camera_matrix=camera_matrix,
                                                           distortion_coeffs=distortion_coeffs,

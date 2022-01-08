@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 from PIL import Image
 from collections import OrderedDict
-from typing import Dict, Any, List, Union
+from typing import Tuple, List, Union, Optional
 
 # Torch
 import torch
@@ -115,15 +115,20 @@ class LandmarksDetector:
         # Initialize 1D Kalman filter for the on-screen gaze point-of regard
         self.__gaze_filter = KalmanFilter1D(dim_x=10, R_=1e-4)
 
-    def detect(self, frame: np.ndarray, **kwargs) -> np.ndarray:
+    def detect(self, frame: np.ndarray, **kwargs) -> Tuple[bool, np.ndarray, Optional[np.ndarray]]:
         """
         Detect 68 landmarks on given frame.
         :return: landmarks as 2-dim array with shape [68 x 2] of float coordinates.
         """
         logger.info(f"Landmarks detection got frame with shape: {frame.shape}, starting...")
         # as two points with (x, y) coords
-        face_location = self.__face_detector.detect(frame=frame, scale=kwargs.get('scale', 1.0),
-                                                    policy=kwargs.get('policy', 'size'))
+        face_location, suc_flg = self.__face_detector.detect(frame=frame, scale=kwargs.get('scale', 1.0),
+                                                             policy=kwargs.get('policy', 'size'))
+        if not suc_flg:
+            logger.error(f"Failed to detect face on frame, no landmarks will be detected.")
+            if kwargs.get('return_face_location', False):
+                return suc_flg, np.zeros((68, 2), dtype=np.float32), np.zeros((4,), dtype=np.float32)
+            return suc_flg, np.zeros((68, 2), dtype=np.float32)
 
         # Use two 1D Kalman filters to smooth bounding box position coordinates
         # (upper left corner and lower right corner)
@@ -184,9 +189,9 @@ class LandmarksDetector:
             predicted_lmks_300vw[i, 1] = np.imag(lmk_f)
 
         if kwargs.get('return_face_location', False):
-            return predicted_lmks_300vw, face_location
+            return suc_flg, predicted_lmks_300vw, face_location
 
-        return predicted_lmks_300vw
+        return suc_flg, predicted_lmks_300vw
 
     def __map_landmarks_to_300vw(self) -> List[int]:
         """
@@ -283,17 +288,19 @@ class LandmarksDetector:
 if __name__ == "__main__":
     output_dir = Path(__file__).resolve().parent.parent / "outputs"
     test_img_dir = Path(__file__).resolve().parent.parent / "additional" / "test_samples"
-    # 'elon_musk.jpg' 'empty.jpg'
-    image = Image.open(str(test_img_dir / 'test_image.png'))
+    # 'elon_musk.jpg' 'empty.jpg' 'test_image.png'
+    image = Image.open(str(test_img_dir / 'empty.jpg'))
     image = image.resize((640, 480), Image.ANTIALIAS)
 
     # detect facial points
     lmk_detector = LandmarksDetector()
-    lmks, face_location = lmk_detector.detect(np.array(image), return_face_location=True)
-
+    suc_flg, lmks, face_location = lmk_detector.detect(np.array(image), return_face_location=True)
+    if not suc_flg:
+        print(f"Failed to detect face on frame, no landmarks will be detected.")
+        sys.exit(-1)
     # Save
-    np.save(str(output_dir / 'test_image_face_loc.npy'), face_location)
-    np.save(str(output_dir / 'test_image_HRNet_lmks.npy'), lmks)
+    # np.save(str(output_dir / 'test_image_face_loc.npy'), face_location)
+    # np.save(str(output_dir / 'test_image_HRNet_lmks.npy'), lmks)
 
     # Show
     draw_image = lmk_detector.plot_markers(np.array(image),
@@ -303,5 +310,5 @@ if __name__ == "__main__":
     cv2.imshow('Landmarks detected', draw_image)
     cv2.waitKey(0)
     # Save
-    cv2.imwrite(str(output_dir / "lmks_detected.png"), draw_image)
+    # cv2.imwrite(str(output_dir / "lmks_detected.png"), draw_image)
 

@@ -21,7 +21,7 @@ from helpers import read_json
 from preprocessing.undistortion import Undistorter
 
 
-class GazeNormalizer:
+class DatasetGazeNormalizer:
 
     def __init__(self, dataset_dir: Union[str, Path], meta_fn: Union[str, Path]):
         """
@@ -290,7 +290,7 @@ if __name__ == "__main__":
     if not dataset_direction.exists():
         logger.info(f"Dataset folder: {dataset_direction} do not exists!")
 
-    normalizer = GazeNormalizer(dataset_dir=dataset_direction, meta_fn=meta_filename)
+    normalizer = DatasetGazeNormalizer(dataset_dir=dataset_direction, meta_fn=meta_filename)
 
     # Process all available archives by batches
     archives = list(dataset_direction.glob("*.tar.gz"))

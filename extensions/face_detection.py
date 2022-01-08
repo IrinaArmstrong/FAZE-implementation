@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from PIL import Image
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 import warnings
 warnings.simplefilter('ignore')
@@ -28,13 +28,14 @@ class FaceDetector:
         self._lib_dir = Path(__file__).resolve().parent / "mtcnn-pytorch"
 
     def detect(self, frame: np.ndarray, scale: float = 1.0,
-               policy: str = 'size') -> np.ndarray:
+               policy: str = 'size') -> Tuple[np.ndarray, bool]:
         """
         Detect face(s) on a frame.
         :param scale: frame resize factor;
         :param policy: which face to select - by size or by maximal confidence score?
                        so `size` or `score` respectively.
-        :return: face bounding box as array with top left and bottom right corners coordinates (x, y).
+        :return: face bounding box as array with top left and bottom right corners coordinates (x, y),
+        and `success` flag, which is True if face detected and False otherwise.
         """
         # detect face
         frame_resized = cv2.resize(frame, (0, 0), fx=scale, fy=scale)
@@ -46,7 +47,7 @@ class FaceDetector:
         bounding_boxes, landmarks = detect_faces(pil_frame, min_face_size=30.0)
         if not len(bounding_boxes):
             logger.error(f"No face detected! Return full frame.")
-            return np.asarray([0, 0, frame.shape[1], frame.shape[0]])
+            return np.asarray([0, 0, frame.shape[1], frame.shape[0]]), False
 
         scores = [x[4] for x in bounding_boxes]
         bounding_boxes = [x[:4] for x in bounding_boxes]
@@ -54,11 +55,11 @@ class FaceDetector:
 
         if not len(face_location):
             logger.error(f"No face detected! Return full frame.")
-            return np.asarray([0, 0, frame.shape[1], frame.shape[0]])
+            return np.asarray([0, 0, frame.shape[1], frame.shape[0]]), False
         # rescale back to initial sizes
         face_location = face_location * (1 / scale)
         logger.info(f"Face successfully detected.")
-        return face_location
+        return face_location, True
 
     @staticmethod
     def __select_best(bounding_boxes: List[np.ndarray], scores: List[float],
@@ -102,7 +103,7 @@ if __name__ == "__main__":
     image = image.resize((640, 480), Image.ANTIALIAS)
 
     detector = FaceDetector()
-    face_location = detector.detect(np.array(image))
+    face_location, flg = detector.detect(np.array(image))
     logger.info(f"Face location of shape {len(face_location)}: {face_location}")
     # Show
     draw_image = show_bboxes(image, np.asarray(face_location).reshape(1, -1))
