@@ -356,6 +356,13 @@ class EOSHeadPoseEstimator:
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
+    def get_anchor_landmarks_3d(self) -> np.ndarray:
+        """
+        Getter for selected reference landmarks in 3D World coordinates
+        of Surray Face Model.
+        """
+        return self.__sfm_points_for_pnp
+
 
 if __name__ == "__main__":
     from calibration.io_utils import VideoReader
@@ -390,6 +397,8 @@ if __name__ == "__main__":
     #         break
 
     headpose_estimator = EOSHeadPoseEstimator()
+    anchor_points_coords = headpose_estimator.get_anchor_landmarks_3d()
+
     frames_rvecs = []
     frames_tvecs = []
     for frame_i, frame in enumerate(frames):

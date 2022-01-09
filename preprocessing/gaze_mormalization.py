@@ -21,6 +21,155 @@ from helpers import read_json
 from preprocessing.undistortion import Undistorter
 
 
+class RuntimeGazeNormalizer:
+
+    def __init__(self, anchor_points_3d: np.ndarray, **kwargs):
+        """
+        Frame & gaze vector normalization for online (frame by frame) running.
+        Revisiting Data Normalization for Appearance-Based Gaze Estimation
+        Xucong Zhang, Yusuke Sugano, Andreas Bulling
+        in Proc. International Symposium on Eye Tracking Research and Applications (ETRA), 2018
+        """
+        self._root_dir = Path(__file__).resolve().parent.parent
+        self.__init_normalized_camera()
+
+        if anchor_points_3d.shape != (13, 3):
+            logger.error(f"Invalid `anchor_points_coords` shape: {anchor_points_3d.shape}, required [13 x 3] matrix.")
+            raise ValueError(f"Invalid `anchor_points_coords` shape: {anchor_points_3d.shape}, required [3 x 3] matrix.")
+        self.__anchor_points_3d = anchor_points_3d
+
+    def __init_normalized_camera(self):
+        params_fn = self._root_dir / "settings" / "normalized_camera.json"
+        if not params_fn.exists():
+            logger.error(f"Normalized camera file do not exists!")
+            raise FileNotFoundError(f"Normalized camera file do not exists!")
+
+        self.__normalized_camera_params = dict(read_json(str(params_fn)))
+        self.__norm_camera_matrix = np.array(
+            [
+                [self.__normalized_camera_params['focal_length'], 0, 0.5 * self.__normalized_camera_params['size'][0]],
+                [0, self.__normalized_camera_params['focal_length'], 0.5 * self.__normalized_camera_params['size'][1]],
+                [0, 0, 1],
+            ],
+            dtype=np.float64,
+        )
+        logger.info(f"Normalized camera loaded")
+
+    def normalize_frame(self, frame: np.ndarray, rvec: np.ndarray, tvec: np.ndarray,
+                        camera_matrix: np.ndarray, gaze_target_3d_pix: np.ndarray = None) -> Dict[str, Any]:
+        """
+        Normalize single frame.
+        """
+        if rvec.shape != (3, 1):
+            if len(rvec.flatten()) == 3:
+                rvec = rvec.reshape(3, 1)
+            else:
+                logger.error(f"Invalid `rvec` shape: {rvec.shape}, required [3 x 1] vector.")
+                raise ValueError(f"Invalid `rvec` shape: {rvec.shape}, required [3 x 1] vector.")
+
+        if tvec.shape != (3, 1):
+            if len(tvec.flatten()) == 3:
+                tvec = tvec.reshape(3, 1)
+            else:
+                logger.error(f"Invalid `tvec` shape: {tvec.shape}, required [3 x 1] vector.")
+                raise ValueError(f"Invalid `tvec` shape: {tvec.shape}, required [3 x 1] vector.")
+
+        if camera_matrix.shape != (3, 3):
+            logger.error(f"Invalid `camera_matrix` shape: {camera_matrix.shape}, required [3 x 3] matrix.")
+            raise ValueError(f"Invalid `camera_matrix` shape: {camera_matrix.shape}, required [3 x 3] matrix.")
+
+        # Convert BGR and RGB
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        # Converts a rotation matrix to a rotation vector
+        rotate_mat, _ = cv2.Rodrigues(rvec)
+
+        # Take mean face model landmarks and get transformed 3D positions
+        # Landmarks: 14
+        # 11-12 - between 2 eyes
+        landmarks_3d = np.matmul(rotate_mat, self.__anchor_points_3d.T).T
+        landmarks_3d += tvec.T
+
+        # Gaze-origin (g_o) and target (g_t)
+        # Gaze-origin (g_o)
+        g_o = np.mean(landmarks_3d[10:12, :], axis=0)  # between 2 eyes
+        g_o = g_o.reshape(3, 1)
+
+        # Gaze target (g_t) and gaze vector (g)
+        g_t = None
+        g = None
+        if gaze_target_3d_pix is not None:
+            g_t = gaze_target_3d_pix.reshape(3, 1)
+            # Gaze vector calculation
+            g = g_t - g_o
+            g /= np.linalg.norm(g)
+
+        # Code below is an adaptation of code by Xucong Zhang
+        # https://www.mpi-inf.mpg.de/departments/computer-vision-and-multimodal-computing/research/gaze-based-human-computer-interaction/revisiting-data-normalization-for-appearance-based-gaze-estimation/
+
+        # actual distance between gaze origin and original camera
+        distance = np.linalg.norm(g_o)
+        z_scale = self.__normalized_camera_params['distance'] / distance
+
+        S = np.eye(3, dtype=np.float64)
+        S[2, 2] = z_scale
+
+        hRx = rotate_mat[:, 0]  # [0, rz, −ry]
+        forward = (g_o / distance).reshape(3)  # z_c / ||z_c||
+
+        down = np.cross(forward, hRx)  # x_c
+        down /= np.linalg.norm(down)  # x_c / ||x_c||
+
+        right = np.cross(down, forward)  # y_c
+        right /= np.linalg.norm(right)  # y_c / ||y_c||
+
+        # Rotation matrix as: R = [x_c, y_c, z_c]
+        R = np.c_[right, down, forward].T  # rotation matrix R
+
+        # transformation matrix is defined as M=SR
+        M = np.dot(self.__norm_camera_matrix, S)
+
+        # Cn is the camera projection matrix defined for the normalized camera
+        # Cr is the original camera projection matrix obtained from camera calibration
+
+        # W - transformation matrix for perspective image warping
+        W = np.dot(M, np.dot(R, np.linalg.inv(camera_matrix)))
+
+        # Output size - size of cropped eye image
+        ow, oh = self.__normalized_camera_params['size']
+        norm_frame = cv2.warpPerspective(frame, W, (ow, oh))  # image normalization
+
+        R = np.asmatrix(R)
+
+        # Correct head pose
+        h = np.array([np.arcsin(rotate_mat[1, 2]),
+                      np.arctan2(rotate_mat[0, 2], rotate_mat[2, 2])])
+        head_mat = R * rotate_mat
+        n_h = np.array([np.arcsin(head_mat[1, 2]),
+                        np.arctan2(head_mat[0, 2], head_mat[2, 2])])
+
+        # Correct gaze
+        n_g = None
+        if g is not None:
+            n_g = R * g
+            n_g /= np.linalg.norm(n_g)
+            n_g = vector_to_pitch_yaw(-n_g.T).flatten()
+
+        return {
+            'norm_frame': norm_frame.astype(np.uint8),  # Image with eyes region, normalized
+            'gaze_direction': g.astype(np.float32) if g is not None else g,  # As difference between target and origin, 3D unit vector
+            'gaze_origin': g_o.astype(np.float32),  # Gaze-origin as 3D vector
+            'gaze_target': g_t.astype(np.float32) if g_t is not None else g_t,
+            # Gaze-target as 3D vector (actually, 2D place on the screen with Z coordinate set to 0)
+            'head_pose': h.astype(np.float32),
+            # Head pose as pitch and yaw angles (azimuth and elevation), 2D vector
+            'normalization_matrix': np.transpose(R).astype(np.float32),  # Rotation [3x3] matrix
+            'normalized_gaze_direction': n_g.astype(np.float32) if n_g is not None else n_g,  # Gaze vector as pitch and yaw angles, 2D vector
+            'normalized_head_pose': n_h.astype(np.float32),
+            # as pitch and yaw angles (azimuth and elevation), 2D vector
+        }
+
+
 class DatasetGazeNormalizer:
 
     def __init__(self, dataset_dir: Union[str, Path], meta_fn: Union[str, Path]):

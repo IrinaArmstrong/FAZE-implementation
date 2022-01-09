@@ -14,7 +14,7 @@ logger = logging_handler.get_logger(__name__)
 from preprocessing.undistortion import Undistorter
 from extensions.landmarks import LandmarksDetector
 from extensions.headpose_estimation import EOSHeadPoseEstimator
-from preprocessing.gaze_mormalization import DatasetGazeNormalizer
+from preprocessing.gaze_mormalization import RuntimeGazeNormalizer
 
 
 class Preprocessor:
@@ -30,7 +30,7 @@ class Preprocessor:
         # todo: embed MediaPipe for face & landmarks detection, head pose estimation -> all in one lib
         self.__lmks_detector = LandmarksDetector()
         self.__headpose_estimator = EOSHeadPoseEstimator()
-        self.__gaze_normalizer = DatasetGazeNormalizer()  # todo: rewrite GazeNormalizer!
+        self.__gaze_normalizer = RuntimeGazeNormalizer(self.__headpose_estimator.get_anchor_landmarks_3d())
 
     def __init_camera_calibration(self, camera_calib_fn: Union[Path, str]):
         """
@@ -55,8 +55,8 @@ class Preprocessor:
         self.__camera_matrix = camera_calib_params.get('camera_matrix', np.eye(3))
         self.__distortion_coeffs = camera_calib_params.get('distortion_coeffs', np.zeros((1, 5)))
 
-    def process_frame(self, frame: np.ndarray, gaze_target_2d: Tuple[int, int],
-                      gaze_target_3d: Tuple[float, float, float],
+    def process_frame(self, frame: np.ndarray, gaze_target_2d: Tuple[int, int] = None,
+                      gaze_target_3d: Tuple[float, float, float] = None,
                       visualize: bool = False):
         """
         Process single frame from data stream with following pipeline of operations:
@@ -75,15 +75,15 @@ class Preprocessor:
         frame = self.__undistorter(frame, self.__camera_matrix, self.__distortion_coeffs)
 
         # Detect face & landmarks
-        success_flg, lmks = self.__lmks_detector.detect(frame, return_face_location=False)
+        success_flg, lmks, face_location = self.__lmks_detector.detect(frame, return_face_location=True)
         if not success_flg:
             return None
 
         # Estimate head pose
         rvec, tvec = self.__headpose_estimator.estimate_headpose(frame, landmarks_2d=lmks,
-                                                          camera_matrix=self.__camera_matrix,
-                                                          distortion_coeffs=self.__distortion_coeffs,
-                                                          visualize=visualize)
+                                                                 camera_matrix=self.__camera_matrix,
+                                                                 distortion_coeffs=self.__distortion_coeffs,
+                                                                 visualize=visualize)
 
         # Create normalized: eye patch, gaze vector and head pose (R, t),
         # if the ground truth point of regard (PoR) is given.
@@ -91,4 +91,18 @@ class Preprocessor:
         # * The point of regard (PoR) is the intersection of the LoS ray with the stimulus plane
         head_pose = (rvec, tvec)
         por = None
+        # will be defined as 3d vector in pixels of the screen
+        if gaze_target_2d is not None:
+            por = np.zeros((3, 1))
+            por[:2] = gaze_target_2d  # (with z coord set to zero)
+
+        normalized_frame_attr = self.__gaze_normalizer.normalize_frame(frame=frame, rvec=rvec, tvec=tvec,
+                                                                       camera_matrix=self.__camera_matrix,
+                                                                       gaze_target_3d_pix=por)
+        # Normalized data returned as key-value pairs.
+        # Available keys: 'norm_frame', 'gaze_direction', 'gaze_origin', 'gaze_target',
+        # 'head_pose', 'normalization_matrix', 'normalized_gaze_direction', 'normalized_head_pose'
+
+
+
 
