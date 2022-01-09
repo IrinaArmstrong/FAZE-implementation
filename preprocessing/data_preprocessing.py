@@ -103,6 +103,100 @@ class Preprocessor:
         # Available keys: 'norm_frame', 'gaze_direction', 'gaze_origin', 'gaze_target',
         # 'head_pose', 'normalization_matrix', 'normalized_gaze_direction', 'normalized_head_pose'
 
+        processed_frame = self.preprocess_image(normalized_frame_attr.get("norm_frame"),
+                                                visualize=visualize)
+        processed_frame = processed_frame[np.newaxis, :, :, :]
+
+        # compute the ground truth POR if the
+        # ground truth is available
+        R_head_a = Preprocessor.calculate_rotation_matrix(normalized_frame_attr.get("normalized_head_pose"))
+        R_gaze_a = np.zeros((1, 3, 3))
+        n_g = normalized_frame_attr.get("normalized_gaze_direction")
+        if n_g is not None:
+            R_gaze_a = Preprocessor.calculate_rotation_matrix(n_g)
+
+            # Verify that n_g can be transformed back
+            # to the screen's pixel location shown
+            # during calibration
+            gaze_n_vector = Preprocessor.pitchyaw_to_vector(n_g)
+            gaze_n_forward = -gaze_n_vector
+            g_cam_forward = inverse_M * gaze_n_forward
+
+            # compute the POR on z=0 plane
+            d = -gaze_cam_origin[2] / g_cam_forward[2]
+            por_cam_x = gaze_cam_origin[0] + d * g_cam_forward[0]
+            por_cam_y = gaze_cam_origin[1] + d * g_cam_forward[1]
+            por_cam_z = 0.0
+
+            x_pixel_gt, y_pixel_gt = mon.camera_to_monitor(por_cam_x, por_cam_y)
+            # verified for correctness of calibration targets
+
+
+
+    @staticmethod
+    def preprocess_image(image: np.ndarray, visualize: bool = False):
+        """
+        Process image with Histogram equalization and further Z-normalization.
+        """
+        # Convert the image from BGR to YCrCb color space
+        ycrcb = cv2.cvtColor(image, cv2.COLOR_RGB2YCrCb)
+        # Equalize the histogram of the Y (Luminance) channel
+        ycrcb[:, :, 0] = cv2.equalizeHist(ycrcb[:, :, 0])
+
+        # Convert the histogram equalized image from YCrCb to BGR color space again
+        eq_image = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2RGB)
+
+        if visualize:
+            cv2.imshow('Original Image', image)
+            cv2.imshow('Histogram equalized Image', eq_image)
+            cv2.waitKey(0)
+
+        # C x H x W
+        image = np.transpose(eq_image, [2, 0, 1])
+        del eq_image
+        # Normalize
+        image = 2.0 * image / 255.0 - 1
+        return image
+
+    # Functions to calculate relative rotation matrices for gaze dir. and head pose
+    @staticmethod
+    def R_x(theta: float) -> np.ndarray:
+        """
+        Creates a rotation around the x axis with `theta` angle.
+        """
+        sin_ = np.sin(theta)
+        cos_ = np.cos(theta)
+        return np.array([
+            [1., 0., 0.],
+            [0., cos_, -sin_],
+            [0., sin_, cos_]
+        ]).astype(np.float32)
+
+    @staticmethod
+    def R_y(phi: float)  -> np.ndarray:
+        """
+        Creates a rotation around the y axis with `phi` () angle.
+        """
+        sin_ = np.sin(phi)
+        cos_ = np.cos(phi)
+        return np.array([
+            [cos_, 0., sin_],
+            [0., 1., 0.],
+            [-sin_, 0., cos_]
+        ]).astype(np.float32)
+
+    @staticmethod
+    def calculate_rotation_matrix(yaw, pitch):
+        return np.matmul(Preprocessor.R_y(pitch), Preprocessor.R_x(yaw))
+
+    @staticmethod
+    def pitchyaw_to_vector(pitchyaw):
+        vector = np.zeros((3, 1))
+        vector[0, 0] = np.cos(pitchyaw[0]) * np.sin(pitchyaw[1])
+        vector[1, 0] = np.sin(pitchyaw[0])
+        vector[2, 0] = np.cos(pitchyaw[0]) * np.cos(pitchyaw[1])
+        return vector
+
 
 
 
